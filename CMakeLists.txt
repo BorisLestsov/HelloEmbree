@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.12)
+cmake_minimum_required(VERSION 3.5)
 project(HelloEmbree)
 
 # Setting Intel Thread Building Blocks
@@ -8,7 +8,7 @@ project(HelloEmbree)
 #set(TBB_LIBRARY_DEBUG       "${TBB_INSTALL_DIR}/build/linux_intel64_gcc_cc7_libc2.27_kernel4.15.0_debug")
 
 # Setting Intel Embree
-set(EMBREE_INSTALL_DIR      "/home/denispavlov/Software/embree-3.2.4.x86_64.linux")
+set(EMBREE_INSTALL_DIR      "/home/b.lestsov/rend/HelloEmbree/embree-3.5.2.x86_64.linux")
 set(EMBREE_INCLUDE          "${EMBREE_INSTALL_DIR}/include")
 set(EMBREE_LIBRARY          "${EMBREE_INSTALL_DIR}/lib")
 

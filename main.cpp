@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <vector>
+#include <limits>
 #include <iomanip>
 
 #include <embree3/rtcore.h>
@@ -53,7 +54,6 @@ Vec3 integrate(const RTCScene& embree_scene, const Ray &ray, int max_depth) {
     // Creating intersection context
     RTCIntersectContext context;
     rtcInitIntersectContext(&context);
-
     for (int depth = 0; depth < max_depth; ++depth) {
         // Setting RTCRay structure from the current Ray
         Ray_to_RTCRayHit(normal_ray, rtc_ray);
@@ -97,14 +97,15 @@ Vec3 integrate(const RTCScene& embree_scene, const Ray &ray, int max_depth) {
         L += F * shape->emission;
         F *= shape->color;
 
-        // TODO: delete this
-        return shape->color;
+        // // TODO: delete this
+        // return shape->color;
 
         // TODO(?): Implement the Russian roulette here
         if (depth > 4) {
-
+            // return Vec3(0.0);
         }
 
+        p += flipped_normal * D_OFFSET_CONSTANT;
         // Next path segment
         switch (shape->bxdf) {
             // TODO: Implement specular bounce
@@ -112,6 +113,10 @@ Vec3 integrate(const RTCScene& embree_scene, const Ray &ray, int max_depth) {
                 // Hint: Both PDF/BRDF are 1.0, so we don't calculate them explicitly
                 // Hint: shift the hitpoint a little bit along the normal to avoid self-intersection (same with other materials)
                 // (something like p += flipped_normal * D_OFFSET_CONSTANT;)
+                Ray new_ray = Ray();
+                new_ray.org = p;
+                new_ray.dir = specular_reflection(-normal_ray.dir, normal);
+                normal_ray = new_ray;
                 break;
             }
             // TODO: Implement refractive bounce
@@ -119,11 +124,21 @@ Vec3 integrate(const RTCScene& embree_scene, const Ray &ray, int max_depth) {
                 // HINT: Discrete probability of picking the direction and Fresnel reflection are equal in this case
                 // and cancel each other, so depending on your implementation you may avoid calculating them explicitly
                 // HINT: While implementing the correct refractions, pay attention to normals, you may need to flip them in some cases
+                // Ray new_ray = Ray();
+                // new_ray.org = p;
+                // new_ray.dir = specular_reflection(-normal_ray.dir, normal);
+                // normal_ray = new_ray;
                 break;
             }
             // TODO: Implement diffuse bounce
             case BxDF_TYPE::DIFFUSE: {
                 // HINT: BRDF * cosine_term and PDF cancel each other
+                Ray new_ray = Ray();
+                new_ray.org = p;
+                new_ray.dir = uniform_hemisphere(get_uniform(), get_uniform());
+                normal_ray = new_ray;
+                // double a = 0.2;
+                // L = L*a + shape->color*(1-a);
                 break;
             }
             /*
@@ -183,9 +198,9 @@ int main(int argc, char *argv[]){
     std::cout << std::setprecision(16);
 
     // Image resolution, SPP
-    int film_width        = 800;
-    int film_height       = 800;
-    int samples_per_pixel = 1;
+    int film_width        = 512;
+    int film_height       = 512;
+    int samples_per_pixel = 10;
 
     // Setting the camera
     Camera camera_desc;
@@ -199,8 +214,8 @@ int main(int argc, char *argv[]){
 
 
     // Path to our models
-    std::string dragon  = "assets/dragon.obj";
-    std::string bunny   = "assets/bunny.obj";
+    std::string dragon  = "../assets/dragon.obj";
+    std::string bunny   = "../assets/bunny.obj";
 
     // Zero transform and transforms for our models
     Transform zero_trans    = Transform(Vec3(1.0, 1.0, 1.0), Vec3(0.0), Vec3(0.0));
