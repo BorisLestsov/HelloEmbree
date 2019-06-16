@@ -1,3 +1,4 @@
+#include <omp.h>
 #include <iostream>
 #include <cmath>
 #include <stdio.h>
@@ -135,8 +136,38 @@ Vec3 integrate(const RTCScene& embree_scene, const Ray &ray, int max_depth) {
                 // HINT: BRDF * cosine_term and PDF cancel each other
                 Ray new_ray = Ray();
                 new_ray.org = p;
+                // new_ray.dir = cosine_weighted_hemisphere(get_uniform(), get_uniform());
                 new_ray.dir = uniform_hemisphere(get_uniform(), get_uniform());
+
+                auto n = normal;
+                auto r_n = std::sqrt(n.x*n.x + n.y*n.y + n.z*n.z);
+                auto th_n = std::acos(n.z/r_n);
+                auto phi_n = std::atan2(n.y,n.x);
+                // auto th_n = get_uniform()*10;
+                // auto phi_n = get_uniform()*10;
+
+                auto v = new_ray.dir;
+                auto r_v = std::sqrt(v.x*v.x + v.y*v.y + v.z*v.z);
+                auto th_v = std::acos(v.z/r_v);
+                auto phi_v = std::atan2(v.y,v.x);
+
+                Vec3 new_dir = Vec3(0.0);
+                new_dir.x = r_v * std::sin(th_v - th_n) * std::cos(phi_v - phi_n);
+                new_dir.y = r_v * std::sin(th_v - th_n) * std::sin(phi_v - phi_n);
+                new_dir.z = r_v * std::cos(th_v - th_n);
+
+                new_ray.dir = new_dir;
+
+                // std::cout << new_ray.dir.x << " "
+                //           << new_ray.dir.y << " "
+                //           << new_ray.dir.z << " "
+                //           << th_v << " "
+                //           << phi_v << std::endl;
+
                 normal_ray = new_ray;
+
+                // L = L*a + shape->color*(1-a);
+
                 // double a = 0.2;
                 // L = L*a + shape->color*(1-a);
                 break;
@@ -162,10 +193,12 @@ void render(const RTCScene& embree_scene, const Camera& camera, const int spp, c
     Vec3* c = new Vec3[camera.width * camera.height];
 
     // Iterate over all the pixels, first height, then width
+#pragma omp parallel for
     for (int y = 0; y < camera.height; y++){
 
-        fprintf(stderr,"\rRendering (%d spp) %5.2f%%",spp,100.0*y/(camera.height-1));
-
+        if (omp_get_thread_num() == 0) {
+           fprintf(stderr,"\rRendering (%d spp) %5.2f%%",spp,100.0*y/(camera.height-1));
+        }
         // TODO: You have to parallelize your renderer
         // Easy option: just use OpenMP / Intel TBB to run the for loop in parallel (don't forget to avoid writing to the same pixel at the same time by different processes)
         // Not so easy option: run ray-intersection workloads in parallel
@@ -175,7 +208,7 @@ void render(const RTCScene& embree_scene, const Camera& camera, const int spp, c
 
             Vec3 r = Vec3(0.0);
             for (int s = 0; s < spp; s++) {
-                // Generate direction for the initial ray
+            // Generate direction for the initial ray
                 Vec3 d = generate_sample(x, y, 0.0, 0.0, camera);
                 // Add light path's contribution to the pixel
                 r = r + integrate(embree_scene, Ray(camera.center_ray.org, d), max_path_depth) * (1.0 / spp);
@@ -198,9 +231,10 @@ int main(int argc, char *argv[]){
     std::cout << std::setprecision(16);
 
     // Image resolution, SPP
-    int film_width        = 512;
-    int film_height       = 512;
-    int samples_per_pixel = 10;
+    int film_width        = 256;
+    int film_height       = 256;
+    int samples_per_pixel = 15;
+    int max_depth = 10;
 
     // Setting the camera
     Camera camera_desc;
@@ -258,7 +292,7 @@ int main(int argc, char *argv[]){
     rtcCommitScene(rtc_scene);
 
     // Start rendering
-    render(rtc_scene, camera_desc, samples_per_pixel, 10);
+    render(rtc_scene, camera_desc, samples_per_pixel, max_depth);
 
     // Releasing the scene and then the device
     rtcReleaseScene(rtc_scene);
