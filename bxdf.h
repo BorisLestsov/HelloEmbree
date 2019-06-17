@@ -2,6 +2,7 @@
 
 #include "vector3.h"
 #include "utils.h"
+#include <cmath>
 
 enum BxDF_TYPE {
     DIFFUSE,
@@ -67,3 +68,18 @@ inline double cosine_wighted_hemisphere_pdf(const Vec3 wi, const Vec3 n, const V
     return cos_theta * D_INV_PI;
 }
 
+inline Vec3 cart2sph(const Vec3 n){
+    auto r_n = std::sqrt(n.x*n.x + n.y*n.y + n.z*n.z);
+    auto th_n = std::acos(n.z/r_n);
+    auto phi_n = std::atan2(n.y,n.x);
+    return Vec3(r_n, th_n, phi_n);
+}
+
+inline Vec3 sph2cart(const Vec3 v){
+    Vec3 res = Vec3(0.0);
+    res.x = v.x * std::sin(v.y) * std::cos(v.z);
+    res.y = v.x * std::sin(v.y) * std::sin(v.z);
+    res.z = v.x * std::cos(v.y);
+    return res;
+
+}

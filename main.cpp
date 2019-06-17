@@ -102,9 +102,13 @@ Vec3 integrate(const RTCScene& embree_scene, const Ray &ray, int max_depth) {
         // return shape->color;
 
         // TODO(?): Implement the Russian roulette here
-        if (depth > 4) {
-            // return Vec3(0.0);
-        }
+        // double prob = (depth == 0)?2:std::max(L.x, std::max(L.y, L.z));
+        // print(depth, L.x, L.y, L.z);
+        // if (get_uniform() > prob) {
+        //     return L;
+        //     // return Vec3(0.0);
+        // }
+        // L = L * (1.0/prob);
 
         p += flipped_normal * D_OFFSET_CONSTANT;
         // Next path segment
@@ -122,13 +126,7 @@ Vec3 integrate(const RTCScene& embree_scene, const Ray &ray, int max_depth) {
             }
             // TODO: Implement refractive bounce
             case BxDF_TYPE::REFRACTIVE: {
-                // HINT: Discrete probability of picking the direction and Fresnel reflection are equal in this case
-                // and cancel each other, so depending on your implementation you may avoid calculating them explicitly
-                // HINT: While implementing the correct refractions, pay attention to normals, you may need to flip them in some cases
-                // Ray new_ray = Ray();
-                // new_ray.org = p;
-                // new_ray.dir = specular_reflection(-normal_ray.dir, normal);
-                // normal_ray = new_ray;
+
                 break;
             }
             // TODO: Implement diffuse bounce
@@ -136,33 +134,22 @@ Vec3 integrate(const RTCScene& embree_scene, const Ray &ray, int max_depth) {
                 // HINT: BRDF * cosine_term and PDF cancel each other
                 Ray new_ray = Ray();
                 new_ray.org = p;
-                // new_ray.dir = cosine_weighted_hemisphere(get_uniform(), get_uniform());
-                new_ray.dir = uniform_hemisphere(get_uniform(), get_uniform());
+                new_ray.dir = cosine_weighted_hemisphere(get_uniform(), get_uniform());
+                // new_ray.dir = uniform_hemisphere(get_uniform(), get_uniform());
 
                 auto n = normal;
-                auto r_n = std::sqrt(n.x*n.x + n.y*n.y + n.z*n.z);
-                auto th_n = std::acos(n.z/r_n);
-                auto phi_n = std::atan2(n.y,n.x);
-                // auto th_n = get_uniform()*10;
-                // auto phi_n = get_uniform()*10;
 
-                auto v = new_ray.dir;
-                auto r_v = std::sqrt(v.x*v.x + v.y*v.y + v.z*v.z);
-                auto th_v = std::acos(v.z/r_v);
-                auto phi_v = std::atan2(v.y,v.x);
+                new_ray.dir = basis(new_ray.dir, n);
 
-                Vec3 new_dir = Vec3(0.0);
-                new_dir.x = r_v * std::sin(th_v - th_n) * std::cos(phi_v - phi_n);
-                new_dir.y = r_v * std::sin(th_v - th_n) * std::sin(phi_v - phi_n);
-                new_dir.z = r_v * std::cos(th_v - th_n);
 
-                new_ray.dir = new_dir;
-
-                // std::cout << new_ray.dir.x << " "
-                //           << new_ray.dir.y << " "
-                //           << new_ray.dir.z << " "
-                //           << th_v << " "
-                //           << phi_v << std::endl;
+                // Vec3 n_s = cart2sph(n);
+                //
+                // auto v = new_ray.dir;
+                // Vec3 v_s = cart2sph(v);
+                //
+                // new_ray.dir = sph2cart(Vec3(v_s.x, v_s.y + n_s.y, v_s.z + n_s.z));
+                // new_ray.dir = sph2cart(Vec3(n_s.x, n_s.y + (get_uniform()-0.5)*2*1.57, n_s.z + (get_uniform()-0.5)*2*1.57));
+                // new_ray.dir = normalize(new_ray.dir);
 
                 normal_ray = new_ray;
 
@@ -197,7 +184,7 @@ void render(const RTCScene& embree_scene, const Camera& camera, const int spp, c
     for (int y = 0; y < camera.height; y++){
 
         if (omp_get_thread_num() == 0) {
-           fprintf(stderr,"\rRendering (%d spp) %5.2f%%",spp,100.0*y/(camera.height-1));
+           fprintf(stderr,"\rRendering (%d spp) %5.2f%%",spp,100.0*y*omp_get_max_threads()/(camera.height-1));
         }
         // TODO: You have to parallelize your renderer
         // Easy option: just use OpenMP / Intel TBB to run the for loop in parallel (don't forget to avoid writing to the same pixel at the same time by different processes)
@@ -233,7 +220,7 @@ int main(int argc, char *argv[]){
     // Image resolution, SPP
     int film_width        = 256;
     int film_height       = 256;
-    int samples_per_pixel = 15;
+    int samples_per_pixel = 128;
     int max_depth = 10;
 
     // Setting the camera
@@ -274,6 +261,7 @@ int main(int argc, char *argv[]){
 
     scene_geometry.push_back(static_cast<GeometricPrimitive*>(new Sphere(10.0,      zero_trans, Vec3(20.0,  10.0, 0.0),         Vec3(00.0), Vec3(1.0), SPECULAR)));//Top
     scene_geometry.push_back(static_cast<GeometricPrimitive*>(new Sphere(15.0,      zero_trans, Vec3(-30.0,  10.0, 0.0),         Vec3(00.0), Vec3(1.0), REFRACTIVE)));//Top
+    // scene_geometry.push_back(static_cast<GeometricPrimitive*>(new Sphere(15.0,      zero_trans, Vec3(-30.0,  10.0, 0.0),         Vec3(00.0), Vec3(1.0), DIFFUSE)));//Top
 
 
     // Creating a new device

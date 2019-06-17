@@ -59,3 +59,31 @@ inline void save_ppm(int w, int h, const Vec3 *pixels, int samps)  {
     fclose(fp);
 }
 
+#define _SEP " "
+
+template<typename T>
+inline void print(const T& arg){
+    std::cout << arg << _SEP
+              << std::endl;
+}
+template<typename T1, typename T2>
+inline void print(const T1& arg1, const T2& arg2){
+    std::cout << arg1 << _SEP
+              << arg2 << _SEP
+              << std::endl;
+}
+template<typename T1, typename T2, typename T3>
+inline void print(const T1& arg1, const T2& arg2, const T3& arg3){
+    std::cout << arg1 << _SEP
+              << arg2 << _SEP
+              << arg3 << _SEP
+              << std::endl;
+}
+template<typename T1, typename T2, typename T3, typename T4>
+inline void print(const T1& arg1, const T2& arg2, const T3& arg3, const T4& arg4){
+    std::cout << arg1 << _SEP
+              << arg2 << _SEP
+              << arg3 << _SEP
+              << arg4 << _SEP
+              << std::endl;
+}

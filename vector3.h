@@ -277,7 +277,7 @@ inline Vector3T<T> basis(const Vector3T<T> &lhs, const Vector3T<T> &rhs){
         u = Vec3(1.0 - rhs.x * rhs.x * a, b, -rhs.x);
         w = Vec3(b, 1.0 - rhs.y * rhs.y * a, -rhs.y);
     }
-    return Vec3(dot(lhs, Vec3(u.x, v.x, w.x)), dot(lhs, Vec3(u.y, v.y, w.y)), dot(lhs, Vec3(u.z, v.z, w.z)));
+    return Vec3(dot(lhs, Vec3(u.x, w.x, v.x)), dot(lhs, Vec3(u.y, w.y, v.y)), dot(lhs, Vec3(u.z, w.z, v.z)));
 }
 
 // Norms
