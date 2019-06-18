@@ -16,6 +16,8 @@
 #include "primitive.h"
 #include "utils.h"
 
+#include <OpenImageDenoise/oidn.hpp>
+
 // Initial scene representation
 std::vector<GeometricPrimitive*> scene_geometry;
 
@@ -34,10 +36,102 @@ struct Camera{
 // TODO(?): Implement at least stochastic sampling or stratified sampling (maybe something more complex? filtering? quasi-mc?)
 // TODO(?): You may also want to implement a proper camera class.
 // Generation of the initial sample
-inline Vec3 generate_sample(int pixel_x, int pixel_y, int filter_dx, int filter_dy, Camera camera){
-    Vec3 d = camera.x_axis * ((float)(pixel_x + (get_uniform()-0.5)*1) / camera.width - 0.5) +
-             camera.y_axis * ((float)(pixel_y + (get_uniform()-0.5)*1) / camera.height - 0.5) + camera.center_ray.dir;
+inline Vec3 generate_sample(int pixel_x, int pixel_y, int filter_dx, int filter_dy, Camera camera, bool rand=true){
+    float dx, dy;
+    if (rand){
+        dx = (get_uniform()-0.5)*1;
+        dy = (get_uniform()-0.5)*1;
+    } else {
+        dx = 0.5;
+        dy = 0.5;
+    }
+
+    Vec3 d = camera.x_axis * ((float)(pixel_x + dx) / camera.width - 0.5) +
+             camera.y_axis * ((float)(pixel_y + dy) / camera.height - 0.5) + camera.center_ray.dir;
     return normalize(d);
+}
+
+
+// ALBEDO
+Vec3 albedo(const RTCScene& embree_scene, const Ray &ray, int max_depth) {
+
+    Ray normal_ray = ray;
+    RTCRayHit rtc_ray;
+
+    RTCIntersectContext context;
+    rtcInitIntersectContext(&context);
+    Ray_to_RTCRayHit(normal_ray, rtc_ray);
+
+    int id = -1;
+    rtcIntersect1(embree_scene, &context, &rtc_ray);
+
+    if (rtc_ray.hit.geomID == (int) RTC_INVALID_GEOMETRY_ID) {
+        return Vec3(0.0);
+    }
+
+    id = rtc_ray.hit.geomID;
+    const GeometricPrimitive* shape = scene_geometry[id];
+
+    Vec3 p = normal_ray(rtc_ray.ray.tfar);
+
+    Vec3 normal;
+    Vec3 flipped_normal;
+
+    if(shape->if_interpolated) {
+        float inter_normal[] = {0.0f, 0.0f, 0.0f};
+        rtcInterpolate0(rtcGetGeometry(embree_scene, id), rtc_ray.hit.primID, rtc_ray.hit.u, rtc_ray.hit.v,
+                        RTC_BUFFER_TYPE_VERTEX_ATTRIBUTE, 0, inter_normal, 3);
+        normal = normalize(Vec3f(inter_normal));
+        flipped_normal = dot(normal, normal_ray.dir) < 0 ? normal : -normal;
+    }
+    else {
+        normal = normalize(Vec3(rtc_ray.hit.Ng_x, rtc_ray.hit.Ng_y, rtc_ray.hit.Ng_z));
+        flipped_normal = dot(normal, normal_ray.dir) < 0 ? normal : -normal;
+    }
+
+    // Adding the emmission of the hit primitive (L_e in the rendering equation)
+    Vec3 col = shape->color;
+
+    return col;
+}
+// NORMALS
+Vec3 get_normals(const RTCScene& embree_scene, const Ray &ray, int max_depth) {
+
+    Ray normal_ray = ray;
+    RTCRayHit rtc_ray;
+
+    RTCIntersectContext context;
+    rtcInitIntersectContext(&context);
+    Ray_to_RTCRayHit(normal_ray, rtc_ray);
+
+    int id = -1;
+    rtcIntersect1(embree_scene, &context, &rtc_ray);
+
+    if (rtc_ray.hit.geomID == (int) RTC_INVALID_GEOMETRY_ID) {
+        return Vec3(0.0);
+    }
+
+    id = rtc_ray.hit.geomID;
+    const GeometricPrimitive* shape = scene_geometry[id];
+
+    Vec3 p = normal_ray(rtc_ray.ray.tfar);
+
+    Vec3 normal;
+    Vec3 flipped_normal;
+
+    if(shape->if_interpolated) {
+        float inter_normal[] = {0.0f, 0.0f, 0.0f};
+        rtcInterpolate0(rtcGetGeometry(embree_scene, id), rtc_ray.hit.primID, rtc_ray.hit.u, rtc_ray.hit.v,
+                        RTC_BUFFER_TYPE_VERTEX_ATTRIBUTE, 0, inter_normal, 3);
+        normal = normalize(Vec3f(inter_normal));
+        flipped_normal = dot(normal, normal_ray.dir) < 0 ? normal : -normal;
+    }
+    else {
+        normal = normalize(Vec3(rtc_ray.hit.Ng_x, rtc_ray.hit.Ng_y, rtc_ray.hit.Ng_z));
+        flipped_normal = dot(normal, normal_ray.dir) < 0 ? normal : -normal;
+    }
+
+    return normal;
 }
 
 
@@ -136,12 +230,12 @@ Vec3 integrate(const RTCScene& embree_scene, const Ray &ray, int max_depth) {
                 Vec3 refractionColor = Vec3(0,1,0), reflectionColor = Vec3(1,0,0);
                 // compute fresnel
                 double kr;
-                fresnel(normal_ray.dir, normal, 2.417, kr);
+                fresnel(normal_ray.dir, normal, 1.555, kr);
                 bool outside = dot(normal_ray.dir, normal) < 0;
                 Vec3 bias = D_OFFSET_CONSTANT * normal;
                 // compute refraction if it is not a case of total internal reflection
                 if (get_uniform() < (1-kr)) {
-                    Vec3 refractionDirection = normalize(refract(normal_ray.dir, normal, 2.417));
+                    Vec3 refractionDirection = normalize(refract(normal_ray.dir, normal, 1.555));
                     Vec3 refractionRayOrig = outside ? p - bias : p + bias;
                     normal_ray.org = refractionRayOrig;
                     normal_ray.dir = refractionDirection;
@@ -165,7 +259,7 @@ Vec3 integrate(const RTCScene& embree_scene, const Ray &ray, int max_depth) {
                     p += normal * D_OFFSET_CONSTANT;
                 }
                 new_ray.org = p;
-                new_ray.dir = refract(normal_ray.dir, normal, 2.417);
+                new_ray.dir = refract(normal_ray.dir, normal, 1.555);
                 normal_ray = new_ray;
                 break;
             }
@@ -202,9 +296,14 @@ Vec3 integrate(const RTCScene& embree_scene, const Ray &ray, int max_depth) {
     return L;
 }
 
+
 void render(const RTCScene& embree_scene, const Camera& camera, const int spp, const int max_path_depth){
     // Image vector
     Vec3* c = new Vec3[camera.width * camera.height];
+    float* in_arr = new float[camera.width * camera.height*3];
+    float* out_arr = new float[camera.width * camera.height*3];
+    float* alb_arr = new float[camera.width * camera.height*3];
+    float* n_arr = new float[camera.width * camera.height*3];
 
     // Iterate over all the pixels, first height, then width
 #pragma omp parallel for
@@ -230,14 +329,71 @@ void render(const RTCScene& embree_scene, const Camera& camera, const int spp, c
             }
             // You might want to clamp the values in the end
             c[current_idx] = c[current_idx] + Vec3(clamp(r.x), clamp(r.y), clamp(r.z));
+            in_arr[3*current_idx+0] = c[current_idx].x;
+            in_arr[3*current_idx+1] = c[current_idx].y;
+            in_arr[3*current_idx+2] = c[current_idx].z;
+
+        }
+    }
+    for (int y = 0; y < camera.height; y++){
+        if (omp_get_thread_num() == 0) {
+           fprintf(stderr,"\rPostprocessing (%d spp) %5.2f%%",spp,100.0*y*omp_get_max_threads()/(camera.height-1));
+        }
+        for (int x = 0; x < camera.width; ++x) {
+            int current_idx = (camera.height - y - 1) * camera.width + x;
+
+            Vec3 d = generate_sample(x, y, 0.0, 0.0, camera, false);
+            Vec3 a = albedo(embree_scene, Ray(camera.center_ray.org, d), max_path_depth);
+            alb_arr[3*current_idx+0] = a.x;
+            alb_arr[3*current_idx+1] = a.y;
+            alb_arr[3*current_idx+2] = a.z;
+
+            Vec3 n = get_normals(embree_scene, Ray(camera.center_ray.org, d), max_path_depth);
+            n_arr[3*current_idx+0] = n.x;
+            n_arr[3*current_idx+1] = n.y;
+            n_arr[3*current_idx+2] = n.z;
+
         }
     }
 
-    // Save .ppm image.
-    // TODO(?): you may want implement your own ldr/hdr image i/o routines
+
+
+    oidn::DeviceRef device = oidn::newDevice();
+    device.commit();
+
+    // Create a denoising filter
+    oidn::FilterRef filter = device.newFilter("RT"); // generic ray tracing filter
+    filter.setImage("color",  in_arr,  oidn::Format::Float3, camera.width, camera.height);
+    filter.setImage("output", out_arr, oidn::Format::Float3, camera.width, camera.height);
+    filter.setImage("albedo", alb_arr, oidn::Format::Float3, camera.width, camera.height);
+    filter.setImage("normal", n_arr, oidn::Format::Float3, camera.width, camera.height);
+    filter.commit();
+
+    // Filter the image
+    filter.execute();
+
+    // Check for errors
+    const char* errorMessage;
+    if (device.getError(errorMessage) != oidn::Error::None)
+      std::cout << "Error: " << errorMessage << std::endl;
+
     save_ppm(camera.width, camera.height, c, spp);
 
+    for (int y = 0; y < camera.height; y++){
+        for (int x = 0; x < camera.width; ++x) {
+            int current_idx = (camera.height - y - 1) * camera.width + x;
+            c[current_idx].x = out_arr[3*current_idx+0];
+            c[current_idx].y = out_arr[3*current_idx+1];
+            c[current_idx].z = out_arr[3*current_idx+2];
+        }
+    }
+    save_ppm(camera.width, camera.height, c, spp+1);
+
     delete [] c;
+    delete [] in_arr;
+    delete [] out_arr;
+    delete [] alb_arr;
+    delete [] n_arr;
 }
 
 int main(int argc, char *argv[]){
@@ -245,12 +401,12 @@ int main(int argc, char *argv[]){
     std::cout << std::setprecision(16);
 
     // Image resolution, SPP
-    int film_width        = 256;
-    int film_height       = 256;
-    int samples_per_pixel = 128;
-    // int film_width        = 512;
-    // int film_height       = 512;
-    // int samples_per_pixel = 256;
+    // int film_width        = 256;
+    // int film_height       = 256;
+    // int samples_per_pixel = 128;
+    int film_width        = 512;
+    int film_height       = 512;
+    int samples_per_pixel = 512;
     int max_depth = 10;
 
     // Setting the camera
@@ -284,7 +440,7 @@ int main(int argc, char *argv[]){
     scene_geometry.push_back(static_cast<GeometricPrimitive*>(new Sphere(r,      zero_trans, Vec3(0.0, 0.0,  offset_r),         Vec3(00.0), Vec3(0.75,0.75,0.75),  DIFFUSE)));//Front
     scene_geometry.push_back(static_cast<GeometricPrimitive*>(new Sphere(r,      zero_trans, Vec3(0.0, -offset_r, 0.0),         Vec3(00.0), Vec3(0.75,0.75,0.75), DIFFUSE)));//Bottom
     scene_geometry.push_back(static_cast<GeometricPrimitive*>(new Sphere(r,      zero_trans, Vec3(0.0,  offset_r, 0.0),         Vec3(00.0), Vec3(0.75,0.75,0.75), DIFFUSE)));//Top
-    scene_geometry.push_back(static_cast<GeometricPrimitive*>(new Sphere(5000.0, zero_trans, Vec3(0.0, 5049.99, 0.0),           Vec3(12.0), Vec3(0.0),            DIFFUSE)));//Light
+    scene_geometry.push_back(static_cast<GeometricPrimitive*>(new Sphere(5000.0, zero_trans, Vec3(0.0, 5049.99, 0.0),           Vec3(18.0), Vec3(0.0),            DIFFUSE)));//Light
 
     // Other objects
     scene_geometry.push_back(static_cast<GeometricPrimitive*>(new TriangleMesh(dragon, dragon_trans, Vec3(0.0), Vec3(0.0), Vec3(1.0, 1.0, 1.0), DIFFUSE)));

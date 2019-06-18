@@ -12,8 +12,12 @@ set(EMBREE_INSTALL_DIR      "/home/b.lestsov/rend/HelloEmbree/embree-3.5.2.x86_6
 set(EMBREE_INCLUDE          "${EMBREE_INSTALL_DIR}/include")
 set(EMBREE_LIBRARY          "${EMBREE_INSTALL_DIR}/lib")
 
-include_directories(${TBB_INCLUDE} ${EMBREE_INCLUDE})
-link_directories(${TBB_LIBRARY_RELEASE} ${EMBREE_LIBRARY})
+set(OIDN_INSTALL_DIR      "/home/b.lestsov/rend/HelloEmbree/oidn-0.9.0.x86_64.linux")
+set(OIDN_INCLUDE          "${OIDN_INSTALL_DIR}/include")
+set(OIDN_LIBRARY          "${OIDN_INSTALL_DIR}/lib")
+
+include_directories(${TBB_INCLUDE} ${EMBREE_INCLUDE} ${OIDN_INCLUDE})
+link_directories(${TBB_LIBRARY_RELEASE} ${EMBREE_LIBRARY} ${OIDN_LIBRARY})
 
 
 find_package(OpenMP)
@@ -38,4 +42,5 @@ set(SOURCE_FILES main.cpp
 
 add_executable(HelloEmbree ${SOURCE_FILES} ${CORE_SOURCE})
 target_link_libraries(HelloEmbree embree3)
+target_link_libraries(HelloEmbree OpenImageDenoise)
 #target_link_libraries(HelloEmbree tbb embree3)
