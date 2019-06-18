@@ -3,12 +3,53 @@
 #include "vector3.h"
 #include "utils.h"
 #include <cmath>
+#include <algorithm>
+
 
 enum BxDF_TYPE {
     DIFFUSE,
     SPECULAR,
-    REFRACTIVE
+    REFRACTIVE,
+    FRESNEL
 };
+
+double clip(double n, double lower, double upper) {
+  return std::max(lower, std::min(n, upper));
+}
+
+Vec3 refract(const Vec3 &I, const Vec3 &N, const double &ior)
+{
+    double cosi = clip(dot(I, N), -1, 1);
+    double etai = 1, etat = ior;
+    Vec3 n = N;
+    if (cosi < 0) { cosi = -cosi; } else { std::swap(etai, etat); n= -N; }
+    double eta = etai / etat;
+    double k = 1 - eta * eta * (1 - cosi * cosi);
+    return k < 0 ? Vec3(0.0) : eta * I + (eta * cosi - std::sqrt(k)) * n;
+}
+
+
+void fresnel(const Vec3 &I, const Vec3 &N, const double &ior, double &kr)
+{
+    double cosi = clip(dot(I, N), -1, 1);
+    double etai = 1, etat = ior;
+    if (cosi > 0) { std::swap(etai, etat); }
+    // Compute sini using Snell's law
+    double sint = etai / etat * std::sqrt(std::max(0.0, 1 - cosi * cosi));
+    // Total internal reflection
+    if (sint >= 1) {
+        kr = 1;
+    }
+    else {
+        double cost = std::sqrt(std::max(0.0, 1 - sint * sint));
+        cosi = std::abs(cosi);
+        double Rs = ((etat * cosi) - (etai * cost)) / ((etat * cosi) + (etai * cost));
+        double Rp = ((etai * cosi) - (etat * cost)) / ((etai * cosi) + (etat * cost));
+        kr = (Rs * Rs + Rp * Rp) / 2;
+    }
+    // As a consequence of the conservation of energy, transmittance is given by:
+    // kt = 1 - kr;
+}
 
 
 // Ideal specular reflection and it's discreet probability

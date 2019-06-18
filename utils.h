@@ -1,6 +1,7 @@
 #pragma once
 
 #include <random>
+#include <climits>
 
 #include "vector3.h"
 
@@ -23,8 +24,26 @@ const int    MAX_NUMBER_OF_RNDS             = 2 * MAX_NUMBER_OF_EVENTS;
 std::default_random_engine generator = std::default_random_engine();
 std::uniform_real_distribution<double> distribution = std::uniform_real_distribution<double>(0.0, 1.0);
 
-inline double get_uniform(){
+inline double get_uniform1(){
     return distribution(generator);
+}
+
+
+static unsigned long x=123456789, y=362436069, z=521288629;
+
+double get_uniform(void) {          //period 2^96-1
+    unsigned long t;
+    x ^= x << 16;
+    x ^= x >> 5;
+    x ^= x << 1;
+
+    t = x;
+    x = y;
+    y = z;
+    z = t ^ x ^ y;
+
+    return ((double) z / (double) ULONG_MAX);
+
 }
 
 /************************************************ Image I/O and Clamping **********************************************/

@@ -35,8 +35,8 @@ struct Camera{
 // TODO(?): You may also want to implement a proper camera class.
 // Generation of the initial sample
 inline Vec3 generate_sample(int pixel_x, int pixel_y, int filter_dx, int filter_dy, Camera camera){
-    Vec3 d = camera.x_axis * ((float)pixel_x / camera.width - 0.5) +
-             camera.y_axis * ((float)pixel_y / camera.height - 0.5) + camera.center_ray.dir;
+    Vec3 d = camera.x_axis * ((float)(pixel_x + (get_uniform()-0.5)*1) / camera.width - 0.5) +
+             camera.y_axis * ((float)(pixel_y + (get_uniform()-0.5)*1) / camera.height - 0.5) + camera.center_ray.dir;
     return normalize(d);
 }
 
@@ -51,6 +51,8 @@ Vec3 integrate(const RTCScene& embree_scene, const Ray &ray, int max_depth) {
     Vec3 L(0.0);
     // The radiance from the current path segment (L_i in the rendering equation)
     Vec3 F(1.0);
+
+    double prob = 0.0;
 
     // Creating intersection context
     RTCIntersectContext context;
@@ -102,15 +104,19 @@ Vec3 integrate(const RTCScene& embree_scene, const Ray &ray, int max_depth) {
         // return shape->color;
 
         // TODO(?): Implement the Russian roulette here
-        // double prob = (depth == 0)?2:std::max(L.x, std::max(L.y, L.z));
-        // print(depth, L.x, L.y, L.z);
+        // Vec3 col = normalize(F);
+        // prob = std::max(col.x, std::max(col.y, col.z));
+        // prob = 1.0/(0.05*depth+1);
+        // // prob = 0.8;
         // if (get_uniform() > prob) {
-        //     return L;
-        //     // return Vec3(0.0);
+        //     // print(depth, prob);
+        //     // print(depth, prob);
+        //     // return L * 1.0/(1.0-prob);
+        //     return Vec3(0.0);
+        //     // break;
         // }
-        // L = L * (1.0/prob);
+        // L *= 1.0/(prob);
 
-        p += flipped_normal * D_OFFSET_CONSTANT;
         // Next path segment
         switch (shape->bxdf) {
             // TODO: Implement specular bounce
@@ -119,14 +125,48 @@ Vec3 integrate(const RTCScene& embree_scene, const Ray &ray, int max_depth) {
                 // Hint: shift the hitpoint a little bit along the normal to avoid self-intersection (same with other materials)
                 // (something like p += flipped_normal * D_OFFSET_CONSTANT;)
                 Ray new_ray = Ray();
+                p += flipped_normal * D_OFFSET_CONSTANT;
                 new_ray.org = p;
                 new_ray.dir = specular_reflection(-normal_ray.dir, normal);
                 normal_ray = new_ray;
                 break;
             }
             // TODO: Implement refractive bounce
+            case BxDF_TYPE::FRESNEL: {
+                Vec3 refractionColor = Vec3(0,1,0), reflectionColor = Vec3(1,0,0);
+                // compute fresnel
+                double kr;
+                fresnel(normal_ray.dir, normal, 2.417, kr);
+                bool outside = dot(normal_ray.dir, normal) < 0;
+                Vec3 bias = D_OFFSET_CONSTANT * normal;
+                // compute refraction if it is not a case of total internal reflection
+                if (get_uniform() < (1-kr)) {
+                    Vec3 refractionDirection = normalize(refract(normal_ray.dir, normal, 2.417));
+                    Vec3 refractionRayOrig = outside ? p - bias : p + bias;
+                    normal_ray.org = refractionRayOrig;
+                    normal_ray.dir = refractionDirection;
+                } else {
+                    Ray new_ray = Ray();
+                    p += flipped_normal * D_OFFSET_CONSTANT;
+                    new_ray.org = p;
+                    new_ray.dir = specular_reflection(-normal_ray.dir, normal);
+                    normal_ray = new_ray;
+                }
+
+                break;
+            }
             case BxDF_TYPE::REFRACTIVE: {
 
+                Ray new_ray = Ray();
+                bool outside = dot(normal_ray.dir, normal) < 0;
+                if (outside){
+                    p -= normal * D_OFFSET_CONSTANT;
+                } else {
+                    p += normal * D_OFFSET_CONSTANT;
+                }
+                new_ray.org = p;
+                new_ray.dir = refract(normal_ray.dir, normal, 2.417);
+                normal_ray = new_ray;
                 break;
             }
             // TODO: Implement diffuse bounce
@@ -141,22 +181,8 @@ Vec3 integrate(const RTCScene& embree_scene, const Ray &ray, int max_depth) {
 
                 new_ray.dir = basis(new_ray.dir, n);
 
-
-                // Vec3 n_s = cart2sph(n);
-                //
-                // auto v = new_ray.dir;
-                // Vec3 v_s = cart2sph(v);
-                //
-                // new_ray.dir = sph2cart(Vec3(v_s.x, v_s.y + n_s.y, v_s.z + n_s.z));
-                // new_ray.dir = sph2cart(Vec3(n_s.x, n_s.y + (get_uniform()-0.5)*2*1.57, n_s.z + (get_uniform()-0.5)*2*1.57));
-                // new_ray.dir = normalize(new_ray.dir);
-
                 normal_ray = new_ray;
 
-                // L = L*a + shape->color*(1-a);
-
-                // double a = 0.2;
-                // L = L*a + shape->color*(1-a);
                 break;
             }
             /*
@@ -172,6 +198,7 @@ Vec3 integrate(const RTCScene& embree_scene, const Ray &ray, int max_depth) {
             }
         }
     }
+    // return L * 1.0/(prob);
     return L;
 }
 
@@ -221,6 +248,9 @@ int main(int argc, char *argv[]){
     int film_width        = 256;
     int film_height       = 256;
     int samples_per_pixel = 128;
+    // int film_width        = 512;
+    // int film_height       = 512;
+    // int samples_per_pixel = 256;
     int max_depth = 10;
 
     // Setting the camera
@@ -260,7 +290,7 @@ int main(int argc, char *argv[]){
     scene_geometry.push_back(static_cast<GeometricPrimitive*>(new TriangleMesh(dragon, dragon_trans, Vec3(0.0), Vec3(0.0), Vec3(1.0, 1.0, 1.0), DIFFUSE)));
 
     scene_geometry.push_back(static_cast<GeometricPrimitive*>(new Sphere(10.0,      zero_trans, Vec3(20.0,  10.0, 0.0),         Vec3(00.0), Vec3(1.0), SPECULAR)));//Top
-    scene_geometry.push_back(static_cast<GeometricPrimitive*>(new Sphere(15.0,      zero_trans, Vec3(-30.0,  10.0, 0.0),         Vec3(00.0), Vec3(1.0), REFRACTIVE)));//Top
+    scene_geometry.push_back(static_cast<GeometricPrimitive*>(new Sphere(15.0,      zero_trans, Vec3(-30.0,  10.0, 0.0),         Vec3(00.0), Vec3(1.0), FRESNEL)));//Top
     // scene_geometry.push_back(static_cast<GeometricPrimitive*>(new Sphere(15.0,      zero_trans, Vec3(-30.0,  10.0, 0.0),         Vec3(00.0), Vec3(1.0), DIFFUSE)));//Top
 
 
