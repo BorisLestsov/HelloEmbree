@@ -297,50 +297,70 @@ Vec3 integrate(const RTCScene& embree_scene, const Ray &ray, int max_depth) {
 }
 
 
-void render(const RTCScene& embree_scene, const Camera& camera, const int spp, const int max_path_depth){
+void render(const RTCScene& embree_scene, const Camera& camera, const int spp_total, const int max_path_depth){
     // Image vector
     Vec3* c = new Vec3[camera.width * camera.height];
+    Vec3* c_tmp = new Vec3[camera.width * camera.height];
     float* in_arr = new float[camera.width * camera.height*3];
     float* out_arr = new float[camera.width * camera.height*3];
     float* alb_arr = new float[camera.width * camera.height*3];
     float* n_arr = new float[camera.width * camera.height*3];
 
     // Iterate over all the pixels, first height, then width
+    int tot_its = 4;
+    int spp = spp_total/tot_its;
+    for (int it = 1; it <= tot_its; it++){
+
 #pragma omp parallel for
-    for (int y = 0; y < camera.height; y++){
+        for (int y = 0; y < camera.height; y++){
 
-        if (omp_get_thread_num() == 0) {
-           fprintf(stderr,"\rRendering (%d spp) %5.2f%%",spp,100.0*y*omp_get_max_threads()/(camera.height-1));
-        }
-        // TODO: You have to parallelize your renderer
-        // Easy option: just use OpenMP / Intel TBB to run the for loop in parallel (don't forget to avoid writing to the same pixel at the same time by different processes)
-        // Not so easy option: run ray-intersection workloads in parallel
-        for (int x = 0; x < camera.width; ++x) {
-            // Getting pixel's index
-            int current_idx = (camera.height - y - 1) * camera.width + x;
-
-            Vec3 r = Vec3(0.0);
-            for (int s = 0; s < spp; s++) {
-            // Generate direction for the initial ray
-                Vec3 d = generate_sample(x, y, 0.0, 0.0, camera);
-                // Add light path's contribution to the pixel
-                r = r + integrate(embree_scene, Ray(camera.center_ray.org, d), max_path_depth) * (1.0 / spp);
-
+            if (omp_get_thread_num() == 0) {
+              fprintf(stderr,"\rRendering (%d spp) %5.2f%%",spp,100.0*y*omp_get_max_threads()/(camera.height-1));
             }
-            // You might want to clamp the values in the end
-            c[current_idx] = c[current_idx] + Vec3(clamp(r.x), clamp(r.y), clamp(r.z));
-            in_arr[3*current_idx+0] = c[current_idx].x;
-            in_arr[3*current_idx+1] = c[current_idx].y;
-            in_arr[3*current_idx+2] = c[current_idx].z;
+            // TODO: You have to parallelize your renderer
+            // Easy option: just use OpenMP / Intel TBB to run the for loop in parallel (don't forget to avoid writing to the same pixel at the same time by different processes)
+            // Not so easy option: run ray-intersection workloads in parallel
+            for (int x = 0; x < camera.width; ++x) {
+                // Getting pixel's index
+                int current_idx = (camera.height - y - 1) * camera.width + x;
 
+                Vec3 r = Vec3(0.0);
+                for (int s = 0; s < spp; s++) {
+                // Generate direction for the initial ray
+                    Vec3 d = generate_sample(x, y, 0.0, 0.0, camera);
+                    // Add light path's contribution to the pixel
+                    Vec3 tmp = integrate(embree_scene, Ray(camera.center_ray.org, d), max_path_depth);
+                    r = r +  tmp * (1.0 / spp);
+                }
+                // You might want to clamp the values in the end
+                c[current_idx] = c[current_idx] + Vec3(clamp(r.x), clamp(r.y), clamp(r.z));
+            }
         }
+#pragma omp parallel for
+        for (int y = 0; y < camera.height; y++){
+            for (int x = 0; x < camera.width; ++x) {
+                int current_idx = (camera.height - y - 1) * camera.width + x;
+                c_tmp[current_idx] = c[current_idx] / (double) it;
+            }
+        }
+
+        fprintf(stderr,"\rsaving it=%d", it);
+        save_ppm(camera.width, camera.height, c_tmp, 10000*it+spp);
+
     }
+#pragma omp parallel for
     for (int y = 0; y < camera.height; y++){
         if (omp_get_thread_num() == 0) {
            fprintf(stderr,"\rPostprocessing (%d spp) %5.2f%%",spp,100.0*y*omp_get_max_threads()/(camera.height-1));
         }
         for (int x = 0; x < camera.width; ++x) {
             int current_idx = (camera.height - y - 1) * camera.width + x;
+
+            c[current_idx] = c[current_idx] / (double) tot_its;
+
+            in_arr[3*current_idx+0] = c[current_idx].x;
+            in_arr[3*current_idx+1] = c[current_idx].y;
+            in_arr[3*current_idx+2] = c[current_idx].z;
 
             Vec3 d = generate_sample(x, y, 0.0, 0.0, camera, false);
             Vec3 a = albedo(embree_scene, Ray(camera.center_ray.org, d), max_path_depth);
@@ -390,6 +410,7 @@ void render(const RTCScene& embree_scene, const Camera& camera, const int spp, c
     save_ppm(camera.width, camera.height, c, spp+1);
 
     delete [] c;
+    delete [] c_tmp;
     delete [] in_arr;
     delete [] out_arr;
     delete [] alb_arr;
@@ -401,12 +422,12 @@ int main(int argc, char *argv[]){
     std::cout << std::setprecision(16);
 
     // Image resolution, SPP
-    // int film_width        = 256;
-    // int film_height       = 256;
-    // int samples_per_pixel = 128;
-    int film_width        = 512;
-    int film_height       = 512;
-    int samples_per_pixel = 512;
+    int film_width        = 256;
+    int film_height       = 256;
+    int samples_per_pixel = 128;
+    // int film_width        = 512;
+    // int film_height       = 512;
+    // int samples_per_pixel = 512;
     int max_depth = 10;
 
     // Setting the camera
