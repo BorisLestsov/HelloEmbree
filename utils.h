@@ -47,15 +47,46 @@ double get_uniform(void) {          //period 2^96-1
 }
 
 /************************************************ Image I/O and Clamping **********************************************/
+
+
+
+Vec3 to_ldr(Vec3 v, double gamma)
+{
+    Vec3 result = Vec3(0.0);
+    // double lum = 0.2126*v.x + 0.7152*v.y + 0.0722*v.z;
+
+    result.x = std::pow(v.x, 1/gamma);
+    result.y = std::pow(v.y, 1/gamma);
+    result.z = std::pow(v.z, 1/gamma);
+
+    // result.x = v.x/(v.x+1);
+    // result.y = v.y/(v.y+1);
+    // result.z = v.z/(v.z+1);
+
+    // float T = pow(average, -1);
+    // result.x = 1 - std::exp(-T * v.x);
+    // result.y = 1 - std::exp(-T * v.y);
+    // result.z = 1 - std::exp(-T * v.z);
+
+    return result;
+}
 inline  double clamp(double x, double low = 0.0, double high = 1.0)  {
     return (x < high) ? ((x > low) ? x : low) : high;
+}
+
+inline  Vec3 clamp(const Vec3 x, double low = 0.0, double high = 1.0)  {
+    Vec3 res(0.0);
+    res.x = x.x;
+    res.y = x.y;
+    res.z = x.z;
+    return res;
 }
 
 inline uint8_t to_byte(double x, double gamma = 2.2)  {
     return static_cast<uint8_t>(clamp(255.0 * std::pow(x, 1 / gamma), 0.0, 255.0));
 }
 
-inline void save_ppm(int w, int h, const Vec3 *pixels, int samps)  {
+inline void save_ppm(int w, int h, const Vec3 *pixels, std::string sppstring)  {
     time_t rawtime;
     struct tm * timeinfo;
     char buffer[80];
@@ -63,10 +94,9 @@ inline void save_ppm(int w, int h, const Vec3 *pixels, int samps)  {
     timeinfo = localtime(&rawtime);
     strftime(buffer, sizeof(buffer), "%d-%m-%Y_%I-%M-%S_", timeinfo);
 
-    std::string sppstring = std::to_string(samps);
     std::string offsetstring = std::to_string(D_OFFSET_CONSTANT);
     std::string timestring(buffer);
-    std::string filename = timestring + offsetstring + "_" + sppstring + "spp.ppm";
+    std::string filename = timestring + offsetstring + "_" + sppstring + ".ppm";
 
     FILE *fp = fopen(filename.c_str(), "w");
 

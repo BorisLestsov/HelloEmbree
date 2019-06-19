@@ -26,10 +26,11 @@ if (OPENMP_FOUND)
     set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
     set (CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${OpenMP_EXE_LINKER_FLAGS}")
 endif()
+find_package( OpenCV REQUIRED )
 
 
 set(CMAKE_CXX_STANDARD 11)
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -g")
 
 #set(CORE_SOURCE )
 
@@ -38,9 +39,11 @@ set(SOURCE_FILES main.cpp
         ray.h
         bxdf.h
         primitive.h
+        argparse.h
         utils.h)
 
 add_executable(HelloEmbree ${SOURCE_FILES} ${CORE_SOURCE})
 target_link_libraries(HelloEmbree embree3)
 target_link_libraries(HelloEmbree OpenImageDenoise)
+target_link_libraries(HelloEmbree ${OpenCV_LIBS})
 #target_link_libraries(HelloEmbree tbb embree3)

@@ -15,8 +15,15 @@
 #include "bxdf.h"
 #include "primitive.h"
 #include "utils.h"
+#include "argparse.h"
 
 #include <OpenImageDenoise/oidn.hpp>
+// #include <opencv2/imgcodecs.hpp>
+#include <opencv2/core/core.hpp>
+#include <opencv2/highgui/highgui.hpp>
+#include "opencv2/imgproc/imgproc.hpp"
+
+ArgumentParser parser("Render");
 
 // Initial scene representation
 std::vector<GeometricPrimitive*> scene_geometry;
@@ -297,17 +304,21 @@ Vec3 integrate(const RTCScene& embree_scene, const Ray &ray, int max_depth) {
 }
 
 
-void render(const RTCScene& embree_scene, const Camera& camera, const int spp_total, const int max_path_depth){
+void render(const RTCScene& embree_scene, const Camera& camera, const int spp_total, const int max_path_depth, const int stages){
     // Image vector
     Vec3* c = new Vec3[camera.width * camera.height];
     Vec3* c_tmp = new Vec3[camera.width * camera.height];
+    Vec3* c_ldr = new Vec3[camera.width * camera.height];
     float* in_arr = new float[camera.width * camera.height*3];
+    float* in_arr_hdr = new float[camera.width * camera.height*3];
     float* out_arr = new float[camera.width * camera.height*3];
     float* alb_arr = new float[camera.width * camera.height*3];
     float* n_arr = new float[camera.width * camera.height*3];
 
+    cv::namedWindow("Render", cv::WINDOW_AUTOSIZE );
+
     // Iterate over all the pixels, first height, then width
-    int tot_its = 4;
+    int tot_its = stages;
     int spp = spp_total/tot_its;
     for (int it = 1; it <= tot_its; it++){
 
@@ -315,7 +326,7 @@ void render(const RTCScene& embree_scene, const Camera& camera, const int spp_to
         for (int y = 0; y < camera.height; y++){
 
             if (omp_get_thread_num() == 0) {
-              fprintf(stderr,"\rRendering (%d spp) %5.2f%%",spp,100.0*y*omp_get_max_threads()/(camera.height-1));
+              fprintf(stderr,"\rRendering %d stage (%d spp) %5.2f%%", it, spp,100.0*y*omp_get_max_threads()/(camera.height-1));
             }
             // TODO: You have to parallelize your renderer
             // Easy option: just use OpenMP / Intel TBB to run the for loop in parallel (don't forget to avoid writing to the same pixel at the same time by different processes)
@@ -333,21 +344,40 @@ void render(const RTCScene& embree_scene, const Camera& camera, const int spp_to
                     r = r +  tmp * (1.0 / spp);
                 }
                 // You might want to clamp the values in the end
-                c[current_idx] = c[current_idx] + Vec3(clamp(r.x), clamp(r.y), clamp(r.z));
+                c[current_idx] = c[current_idx] + Vec3(r.x, r.y, r.z);
             }
         }
 #pragma omp parallel for
         for (int y = 0; y < camera.height; y++){
             for (int x = 0; x < camera.width; ++x) {
                 int current_idx = (camera.height - y - 1) * camera.width + x;
-                c_tmp[current_idx] = c[current_idx] / (double) it;
+                c[current_idx] = c[current_idx];
+                c_tmp[current_idx] = clamp(c[current_idx]) / (double) it;
+
+                in_arr[3*current_idx+0] = c_tmp[current_idx].x;
+                in_arr[3*current_idx+1] = c_tmp[current_idx].y;
+                in_arr[3*current_idx+2] = c_tmp[current_idx].z;
+
             }
         }
+        cv::Mat cv_img = cv::Mat(camera.height, camera.width, CV_32FC3, in_arr);
+        cv::cvtColor(cv_img, cv_img, CV_BGR2RGB);
 
-        fprintf(stderr,"\rsaving it=%d", it);
-        save_ppm(camera.width, camera.height, c_tmp, 10000*it+spp);
-
+        save_ppm(camera.width, camera.height, c_tmp, std::to_string(it) + std::string("_") + std::to_string(spp));
+        cv::imshow("Render", cv_img);
+        cv::waitKey(1000);
     }
+
+    // float mean = 0.0;
+    // for (int y = 0; y < camera.height; y++){
+    //     for (int x = 0; x < camera.width; ++x) {
+    //         int current_idx = (camera.height - y - 1) * camera.width + x;
+    //         mean += c[current_idx].x + c[current_idx].y + c[current_idx].z;
+    //     }
+    // }
+    // mean /= camera.height*camera.width;
+
+    // cv::destroyWindow("Render");
 #pragma omp parallel for
     for (int y = 0; y < camera.height; y++){
         if (omp_get_thread_num() == 0) {
@@ -356,11 +386,15 @@ void render(const RTCScene& embree_scene, const Camera& camera, const int spp_to
         for (int x = 0; x < camera.width; ++x) {
             int current_idx = (camera.height - y - 1) * camera.width + x;
 
-            c[current_idx] = c[current_idx] / (double) tot_its;
+            c_ldr[current_idx] = clamp(c[current_idx] / (double) tot_its);
 
-            in_arr[3*current_idx+0] = c[current_idx].x;
-            in_arr[3*current_idx+1] = c[current_idx].y;
-            in_arr[3*current_idx+2] = c[current_idx].z;
+            in_arr_hdr[3*current_idx+0] = c[current_idx].x;
+            in_arr_hdr[3*current_idx+1] = c[current_idx].y;
+            in_arr_hdr[3*current_idx+2] = c[current_idx].z;
+
+            in_arr[3*current_idx+0] = c_ldr[current_idx].x;
+            in_arr[3*current_idx+1] = c_ldr[current_idx].y;
+            in_arr[3*current_idx+2] = c_ldr[current_idx].z;
 
             Vec3 d = generate_sample(x, y, 0.0, 0.0, camera, false);
             Vec3 a = albedo(embree_scene, Ray(camera.center_ray.org, d), max_path_depth);
@@ -376,7 +410,12 @@ void render(const RTCScene& embree_scene, const Camera& camera, const int spp_to
         }
     }
 
+    cv::Mat cv_img_hdr = cv::Mat(camera.height, camera.width, CV_32FC3, in_arr_hdr);
+    cv::cvtColor(cv_img_hdr, cv_img_hdr, CV_BGR2RGB);
+    cv::imwrite("hdr.exr", cv_img_hdr);
 
+
+    save_ppm(camera.width, camera.height, c_ldr, "final_ldr");
 
     oidn::DeviceRef device = oidn::newDevice();
     device.commit();
@@ -397,8 +436,8 @@ void render(const RTCScene& embree_scene, const Camera& camera, const int spp_to
     if (device.getError(errorMessage) != oidn::Error::None)
       std::cout << "Error: " << errorMessage << std::endl;
 
-    save_ppm(camera.width, camera.height, c, spp);
 
+#pragma omp parallel for
     for (int y = 0; y < camera.height; y++){
         for (int x = 0; x < camera.width; ++x) {
             int current_idx = (camera.height - y - 1) * camera.width + x;
@@ -407,11 +446,25 @@ void render(const RTCScene& embree_scene, const Camera& camera, const int spp_to
             c[current_idx].z = out_arr[3*current_idx+2];
         }
     }
-    save_ppm(camera.width, camera.height, c, spp+1);
+    save_ppm(camera.width, camera.height, c, "denoised");
+
+    cv::Mat cv_img = cv::Mat(camera.height, camera.width, CV_32FC3, in_arr);
+    cv::Mat cv_img_denoise = cv::Mat(camera.height, camera.width, CV_32FC3, out_arr);
+    cv::Mat alb_img = cv::Mat(camera.height, camera.width, CV_32FC3, alb_arr);
+    cv::Mat n_img = cv::Mat(camera.height, camera.width, CV_32FC3, n_arr);
+
+    cv::Mat res;
+
+    cv::hconcat(std::vector<cv::Mat>{cv_img, cv_img_denoise, alb_img, n_img}, res);
+    cv::cvtColor(res, res, CV_BGR2RGB);
+
+    cv::imshow("Render", res);
+    cv::waitKey(0);
+
 
     delete [] c;
-    delete [] c_tmp;
     delete [] in_arr;
+    delete [] in_arr_hdr;
     delete [] out_arr;
     delete [] alb_arr;
     delete [] n_arr;
@@ -419,16 +472,22 @@ void render(const RTCScene& embree_scene, const Camera& camera, const int spp_to
 
 int main(int argc, char *argv[]){
 
+    parser.add_argument("-h", "--height", "", true);
+    parser.add_argument("-w", "--width", "", true);
+    parser.add_argument("-s", "--spp", "", true);
+    parser.add_argument("-p", "--stages", "", true);
+    parser.add_argument("-d", "--max-depth", "", true);
+
+    parser.parse(argc, argv);
+
     std::cout << std::setprecision(16);
 
     // Image resolution, SPP
-    int film_width        = 256;
-    int film_height       = 256;
-    int samples_per_pixel = 128;
-    // int film_width        = 512;
-    // int film_height       = 512;
-    // int samples_per_pixel = 512;
-    int max_depth = 10;
+    int film_width        = parser.get<int>("width");
+    int film_height       = parser.get<int>("height");
+    int samples_per_pixel = parser.get<int>("spp");
+    int max_depth = parser.get<int>("d");
+    int stages = parser.get<int>("stages");
 
     // Setting the camera
     Camera camera_desc;
@@ -487,7 +546,7 @@ int main(int argc, char *argv[]){
     rtcCommitScene(rtc_scene);
 
     // Start rendering
-    render(rtc_scene, camera_desc, samples_per_pixel, max_depth);
+    render(rtc_scene, camera_desc, samples_per_pixel, max_depth, stages);
 
     // Releasing the scene and then the device
     rtcReleaseScene(rtc_scene);
