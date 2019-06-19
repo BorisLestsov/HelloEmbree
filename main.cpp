@@ -437,24 +437,41 @@ int main(int argc, char *argv[]){
     const double        r = 10000.0;
     const double offset_r = 10050.0;
 
-    MatVec mats_lamp = MatVec{new MatDiffuse(Vec3(0.0), Vec3(10.0))};
-    MatVec mats = MatVec{new MatDiffuse(Vec3(1.0, 1.0, 1.0), Vec3(0.0))};
-
     // Cornell box
-    scene_geometry.push_back(static_cast<GeometricPrimitive*>(new Sphere(r,      zero_trans, Vec3(-offset_r, 0.0, 0.0), mats)));//Left
-    scene_geometry.push_back(static_cast<GeometricPrimitive*>(new Sphere(r,      zero_trans, Vec3( offset_r, 0.0, 0.0), mats)));//Right
-    scene_geometry.push_back(static_cast<GeometricPrimitive*>(new Sphere(r,      zero_trans, Vec3(0.0, 0.0, -offset_r - 100.0), mats)));//Back
-    scene_geometry.push_back(static_cast<GeometricPrimitive*>(new Sphere(r,      zero_trans, Vec3(0.0, 0.0,  offset_r), mats)));//Front
-    scene_geometry.push_back(static_cast<GeometricPrimitive*>(new Sphere(r,      zero_trans, Vec3(0.0, -offset_r, 0.0), mats)));//Bottom
-    scene_geometry.push_back(static_cast<GeometricPrimitive*>(new Sphere(r,      zero_trans, Vec3(0.0,  offset_r, 0.0), mats)));//Top
-    scene_geometry.push_back(static_cast<GeometricPrimitive*>(new Sphere(5000.0, zero_trans, Vec3(0.0, 5049.99, 0.0), mats_lamp)));//Light
+    scene_geometry.push_back(static_cast<GeometricPrimitive*>(new Sphere(r,      zero_trans, Vec3(-offset_r, 0.0, 0.0),
+                             MatVec{new MatDiffuse(Vec3(0.75,0.25,0.25), Vec3(0.0))}
+    )));//Left
+    scene_geometry.push_back(static_cast<GeometricPrimitive*>(new Sphere(r,      zero_trans, Vec3( offset_r, 0.0, 0.0),
+                             MatVec{new MatDiffuse(Vec3(0.25,0.25,0.75), Vec3(0.0))}
+    )));//Right
+    scene_geometry.push_back(static_cast<GeometricPrimitive*>(new Sphere(r,      zero_trans, Vec3(0.0, 0.0, -offset_r - 100.0),
+                             MatVec{new MatDiffuse(Vec3(0.75,0.75,0.75), Vec3(0.0))}
+    )));//Back
+    scene_geometry.push_back(static_cast<GeometricPrimitive*>(new Sphere(r,      zero_trans, Vec3(0.0, 0.0,  offset_r),
+                             MatVec{new MatDiffuse(Vec3(0.75,0.75,0.75), Vec3(0.0))}
+    )));//Front
+    scene_geometry.push_back(static_cast<GeometricPrimitive*>(new Sphere(r,      zero_trans, Vec3(0.0, -offset_r, 0.0),
+                             MatVec{new MatDiffuse(Vec3(0.75,0.75,0.75), Vec3(0.0))}
+    )));//Bottom
+    scene_geometry.push_back(static_cast<GeometricPrimitive*>(new Sphere(r,      zero_trans, Vec3(0.0,  offset_r, 0.0),
+                             MatVec{new MatDiffuse(Vec3(0.75,0.75,0.75), Vec3(0.0))}
+    )));//Top
+    scene_geometry.push_back(static_cast<GeometricPrimitive*>(new Sphere(5000.0, zero_trans, Vec3(0.0, 5049.99, 0.0),
+                             MatVec{new MatDiffuse(Vec3(0.0), Vec3(12.0))}
+    )));//Light
 
     // Other objects
-    scene_geometry.push_back(static_cast<GeometricPrimitive*>(new TriangleMesh(dragon, dragon_trans, Vec3(0.0), mats)));
+    scene_geometry.push_back(static_cast<GeometricPrimitive*>(new TriangleMesh(dragon, dragon_trans, Vec3(0.0),
+                             MatVec{new MatDiffuse(Vec3(1.0, 1.0, 1.0), Vec3(0.0))}
+    )));
 
-    scene_geometry.push_back(static_cast<GeometricPrimitive*>(new Sphere(10.0,      zero_trans, Vec3(20.0,  10.0, 0.0), mats)));//Top
-    scene_geometry.push_back(static_cast<GeometricPrimitive*>(new Sphere(15.0,      zero_trans, Vec3(-30.0,  10.0, 0.0), mats)));//Top
-    // scene_geometry.push_back(static_cast<GeometricPrimitive*>(new Sphere(15.0,      zero_trans, Vec3(-30.0,  10.0, 0.0),         Vec3(00.0), Vec3(1.0), DIFFUSE)));//Top
+    scene_geometry.push_back(static_cast<GeometricPrimitive*>(new Sphere(10.0,      zero_trans, Vec3(20.0,  10.0, 0.0),
+                             MatVec{new MatSpecular(Vec3(1.0, 1.0, 1.0), Vec3(0.0))}
+    )));//Top
+    scene_geometry.push_back(static_cast<GeometricPrimitive*>(new Sphere(15.0,      zero_trans, Vec3(-30.0,  10.0, 0.0),
+                             MatVec{new MatFresnel(Vec3(1.0, 1.0, 1.0), Vec3(0.0))}
+
+    )));//Top
 
 
     // Creating a new device

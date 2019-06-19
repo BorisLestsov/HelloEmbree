@@ -17,18 +17,21 @@ typedef std::vector<double> dvec;
 class MatBase{
 
 public:
-    explicit MatBase(Vec3 color, Vec3 emission, BxDF_TYPE type): color(color), emission(emission), bxdf_type(type) {}
+    explicit MatBase(Vec3 color, Vec3 emission, BxDF_TYPE type, double weight):
+      color(color), emission(emission), bxdf_type(type), weight(weight)
+    {}
 
     virtual Ray sample(Ray normal_ray, Vec3 p, Vec3 normal, Vec3 flipped_normal) = 0;
 
     BxDF_TYPE bxdf_type;
     Vec3 emission;
     Vec3 color;
+    double weight;
 };
 
 class MatDiffuse: public MatBase{
 public:
-    explicit MatDiffuse(Vec3 color, Vec3 emission): MatBase(color, emission, BxDF_TYPE ::DIFFUSE) {}
+    explicit MatDiffuse(Vec3 color, Vec3 emission, double weight=1): MatBase(color, emission, BxDF_TYPE ::DIFFUSE, weight) {}
 
     Ray sample(Ray normal_ray, Vec3 p, Vec3 normal, Vec3 flipped_normal) override {
         // HINT: BRDF * cosine_term and PDF cancel each other
@@ -44,7 +47,7 @@ public:
 
 class MatRefractive: public MatBase{
 public:
-    explicit MatRefractive(Vec3 color, Vec3 emission): MatBase(color, emission, BxDF_TYPE ::REFRACTIVE) {}
+    explicit MatRefractive(Vec3 color, Vec3 emission, double weight=1): MatBase(color, emission, BxDF_TYPE ::REFRACTIVE, weight) {}
 
     Ray sample(Ray normal_ray, Vec3 p, Vec3 normal, Vec3 flipped_normal) override {
         Ray new_ray = Ray();
@@ -62,7 +65,7 @@ public:
 
 class MatFresnel: public MatBase{
 public:
-    explicit MatFresnel(Vec3 color, Vec3 emission): MatBase(color, emission, BxDF_TYPE ::FRESNEL) {}
+    explicit MatFresnel(Vec3 color, Vec3 emission, double weight=1): MatBase(color, emission, BxDF_TYPE ::FRESNEL, weight) {}
 
     Ray sample(Ray normal_ray, Vec3 p, Vec3 normal, Vec3 flipped_normal) override {
         Ray new_ray = Ray();
@@ -90,7 +93,7 @@ public:
 
 class MatSpecular: public MatBase{
 public:
-    explicit MatSpecular(Vec3 color, Vec3 emission): MatBase(color, emission, BxDF_TYPE ::SPECULAR) {}
+    explicit MatSpecular(Vec3 color, Vec3 emission, double weight=1): MatBase(color, emission, BxDF_TYPE ::SPECULAR, weight) {}
 
     Ray sample(Ray normal_ray, Vec3 p, Vec3 normal, Vec3 flipped_normal) override {
         Ray new_ray = Ray();
