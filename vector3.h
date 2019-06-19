@@ -267,7 +267,7 @@ inline Vector3T<T> cross(const Vector3T<T>& lhs, const Vector3T<T>& rhs){
 template <typename T>
 inline Vector3T<T> basis(const Vector3T<T> &lhs, const Vector3T<T> &rhs){
     Vec3 u, w, v = rhs;
-    if (rhs.z < -0.9999999) {
+    if (rhs.z < -0.99999999999) {
         u = Vec3(0.0, -1.0, 0.0);
         w = Vec3(-1.0, 0.0, 0.0);
     }

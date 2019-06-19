@@ -11,7 +11,8 @@ enum BxDF_TYPE {
     DIFFUSE,
     SPECULAR,
     REFRACTIVE,
-    FRESNEL
+    FRESNEL,
+    GLOSSY
 };
 
 double clip(double n, double lower, double upper) {
@@ -30,7 +31,7 @@ Vec3 refract(const Vec3 &I, const Vec3 &N, const double &ior)
 }
 
 
-void fresnel(const Vec3 &I, const Vec3 &N, const double &ior, double &kr)
+double fresnel(const Vec3 &I, const Vec3 &N, const double &ior)
 {
     double cosi = clip(dot(I, N), -1, 1);
     double etai = 1, etat = ior;
@@ -39,14 +40,15 @@ void fresnel(const Vec3 &I, const Vec3 &N, const double &ior, double &kr)
     double sint = etai / etat * std::sqrt(std::max(0.0, 1 - cosi * cosi));
     // Total internal reflection
     if (sint >= 1) {
-        kr = 1;
+        return 1;
     }
     else {
         double cost = std::sqrt(std::max(0.0, 1 - sint * sint));
         cosi = std::abs(cosi);
         double Rs = ((etat * cosi) - (etai * cost)) / ((etat * cosi) + (etai * cost));
         double Rp = ((etai * cosi) - (etat * cost)) / ((etai * cosi) + (etat * cost));
-        kr = (Rs * Rs + Rp * Rp) / 2;
+        double kr = (Rs * Rs + Rp * Rp) / 2;
+        return kr;
     }
     // As a consequence of the conservation of energy, transmittance is given by:
     // kt = 1 - kr;
@@ -94,11 +96,16 @@ inline double uniform_hemisphere_pdf() {
 }
 
 // Uniform sample on the cosine weighted hemisphere and it's PDF
-inline Vec3 cosine_weighted_hemisphere(const double rnd1, const double rnd2){
-    const double cos_theta = std::sqrt(1.0 - rnd1);
+inline Vec3 cosine_weighted_hemisphere(const double rnd1, const double rnd2, double e=1){
+    const double cos_theta = std::pow(1.0 - rnd1, 1.0/(e+1));
     const double sin_theta = std::sqrt(rnd1);
     const double phi = 2.0 * M_PI * rnd2;
     return Vec3(cos(phi) * sin_theta, sin(phi) * sin_theta, cos_theta);
+}
+
+inline Vec3 cosine_weighted_hemisphere_glossy(const double rnd1, const double rnd2, double n=10){
+    const double h = std::sqrt(1-std::pow(rnd1, 2.0/(n+1.0)));
+    return Vec3(h*cos(2*M_PI*rnd2), h * sin(2*M_PI*rnd2), std::pow(rnd1, 1.0/(n+1)));
 }
 
 inline double cosine_wighted_hemisphere_pdf(double cos_theta) {

@@ -198,9 +198,6 @@ Vec3 integrate(RTCScene& embree_scene, const Ray &ray, int max_depth) {
         }
 
 
-        // // TODO: delete this
-        // return shape->color;
-
         // TODO(?): Implement the Russian roulette here
         // Vec3 col = normalize(F);
         // prob = std::max(col.x, std::max(col.y, col.z));
@@ -215,7 +212,22 @@ Vec3 integrate(RTCScene& embree_scene, const Ray &ray, int max_depth) {
         // }
         // L *= 1.0/(prob);
 
-        MatBase* mat = shape->mats[0];
+        std::vector<double> psums{0};
+        for (int i = 0; i < shape->mats.size(); i++){
+            MatBase* mat = shape->mats[i];
+            psums.push_back(psums.back() + mat->weight);
+        }
+
+        int mat_ind = 0;
+        double mat_flt = get_uniform()*psums.back();
+        for (int i = 0; i < shape->mats.size(); i++){
+            if ((mat_flt >= psums[i]) and (mat_flt < psums[i+1])){
+                mat_ind = i;
+                break;
+            }
+        }
+
+        MatBase* mat = shape->mats[mat_ind];
         normal_ray = mat->sample(normal_ray, p, normal, flipped_normal);
 
         // Adding the emmission of the hit primitive (L_e in the rendering equation)
@@ -432,7 +444,7 @@ int main(int argc, char *argv[]){
     Transform zero_trans    = Transform(Vec3(1.0, 1.0, 1.0), Vec3(0.0), Vec3(0.0));
     Transform dragon_trans  = Transform(Vec3(70.0, 70.0, 70.0), Vec3(0.0), Vec3(0.0, -30.0, 0.0));
     //Transform bunny_trans   = Transform(Vec3(40.0, 40.0, 40.0), Vec3(0.0), Vec3(10.0, -50.0, 0.0));
-    Transform bunny_trans   = Transform(Vec3(40.0, 40.0, 40.0), Vec3(0.0), Vec3(10.0, -40.0, 0.0));
+    Transform bunny_trans   = Transform(Vec3(20.0, 20.0, 20.0), Vec3(0.0, 0.0, 0.0), Vec3(0.0, -60.0, -15.0));
 
     const double        r = 10000.0;
     const double offset_r = 10050.0;
@@ -457,20 +469,32 @@ int main(int argc, char *argv[]){
                              MatVec{new MatDiffuse(Vec3(0.75,0.75,0.75), Vec3(0.0))}
     )));//Top
     scene_geometry.push_back(static_cast<GeometricPrimitive*>(new Sphere(5000.0, zero_trans, Vec3(0.0, 5049.99, 0.0),
-                             MatVec{new MatDiffuse(Vec3(0.0), Vec3(12.0))}
+                             MatVec{new MatDiffuse(Vec3(1.0,1.0,1.0), Vec3(12.0))}
+                             // MatVec{new MatDiffuse(Vec3(1.0, 1.0, 0.5), Vec3(0.0), 0.2),
+                             //        new MatDiffuse(Vec3(0.0), Vec3(12.0), 0.8)
+                             // }
     )));//Light
 
     // Other objects
     scene_geometry.push_back(static_cast<GeometricPrimitive*>(new TriangleMesh(dragon, dragon_trans, Vec3(0.0),
-                             MatVec{new MatDiffuse(Vec3(1.0, 1.0, 1.0), Vec3(0.0))}
+                             MatVec{new MatDiffuse(Vec3(0.83, 0.68, 0.21), Vec3(0.0), 0.5),
+                                    new MatGlossy(Vec3(0.83, 0.68, 0.21), Vec3(0.0), 20, 0.5)
+                             }
     )));
+    // scene_geometry.push_back(static_cast<GeometricPrimitive*>(new TriangleMesh(bunny, bunny_trans, Vec3(0.0),
+    //                          MatVec{new MatDiffuse(Vec3(0.83, 0.68, 0.21), Vec3(0.0), 0.3),
+    //                                 new MatFresnel(Vec3(1.0, 1.0, 1.0), Vec3(0.0), 0.7)
+    //                          }
+    // )));
 
     scene_geometry.push_back(static_cast<GeometricPrimitive*>(new Sphere(10.0,      zero_trans, Vec3(20.0,  10.0, 0.0),
                              MatVec{new MatSpecular(Vec3(1.0, 1.0, 1.0), Vec3(0.0))}
     )));//Top
     scene_geometry.push_back(static_cast<GeometricPrimitive*>(new Sphere(15.0,      zero_trans, Vec3(-30.0,  10.0, 0.0),
-                             MatVec{new MatFresnel(Vec3(1.0, 1.0, 1.0), Vec3(0.0))}
-
+                             MatVec{new MatFresnel(Vec3(1.0, 1.0, 1.0), Vec3(0.0), 1.55)}
+    )));//Top
+    scene_geometry.push_back(static_cast<GeometricPrimitive*>(new Sphere(10.0,      zero_trans, Vec3(30.0,  30.0, 0.0),
+                             MatVec{new MatFresnel(Vec3(0.83, 0.68, 0.21), Vec3(0.0), 1.15)}
     )));//Top
 
 

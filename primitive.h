@@ -47,7 +47,8 @@ public:
 
 class MatRefractive: public MatBase{
 public:
-    explicit MatRefractive(Vec3 color, Vec3 emission, double weight=1): MatBase(color, emission, BxDF_TYPE ::REFRACTIVE, weight) {}
+    double k;
+    explicit MatRefractive(Vec3 color, Vec3 emission, double k, double weight=1): k(k), MatBase(color, emission, BxDF_TYPE ::REFRACTIVE, weight) {}
 
     Ray sample(Ray normal_ray, Vec3 p, Vec3 normal, Vec3 flipped_normal) override {
         Ray new_ray = Ray();
@@ -58,27 +59,26 @@ public:
             p += normal * D_OFFSET_CONSTANT;
         }
         new_ray.org = p;
-        new_ray.dir = refract(normal_ray.dir, normal, 1.555);
+        new_ray.dir = refract(normal_ray.dir, normal, k);
         return new_ray;
     }
 };
 
 class MatFresnel: public MatBase{
 public:
-    explicit MatFresnel(Vec3 color, Vec3 emission, double weight=1): MatBase(color, emission, BxDF_TYPE ::FRESNEL, weight) {}
+    double k;
+    explicit MatFresnel(Vec3 color, Vec3 emission, double k, double weight=1): k(k), MatBase(color, emission, BxDF_TYPE ::FRESNEL, weight) {}
 
     Ray sample(Ray normal_ray, Vec3 p, Vec3 normal, Vec3 flipped_normal) override {
         Ray new_ray = Ray();
 
-        Vec3 refractionColor = Vec3(0,1,0), reflectionColor = Vec3(1,0,0);
         // compute fresnel
-        double kr;
-        fresnel(normal_ray.dir, normal, 1.555, kr);
+        double kr = fresnel(normal_ray.dir, normal, k);
         bool outside = dot(normal_ray.dir, normal) < 0;
         Vec3 bias = D_OFFSET_CONSTANT * normal;
         // compute refraction if it is not a case of total internal reflection
         if (get_uniform() < (1-kr)) {
-            Vec3 refractionDirection = normalize(refract(normal_ray.dir, normal, 1.555));
+            Vec3 refractionDirection = normalize(refract(normal_ray.dir, normal, k));
             Vec3 refractionRayOrig = outside ? p - bias : p + bias;
             new_ray.org = refractionRayOrig;
             new_ray.dir = refractionDirection;
@@ -100,6 +100,23 @@ public:
         p += flipped_normal * D_OFFSET_CONSTANT;
         new_ray.org = p;
         new_ray.dir = specular_reflection(-normal_ray.dir, normal);
+        return new_ray;
+    }
+};
+
+class MatGlossy: public MatBase{
+public:
+    double n;
+    explicit MatGlossy(Vec3 color, Vec3 emission, double n, double weight=1): n(n), MatBase(color, emission, BxDF_TYPE ::GLOSSY, weight) {}
+
+    Ray sample(Ray normal_ray, Vec3 p, Vec3 normal, Vec3 flipped_normal) override {
+        // HINT: BRDF * cosine_term and PDF cancel each other
+        Ray new_ray = Ray();
+        new_ray.org = p;
+        new_ray.dir = cosine_weighted_hemisphere_glossy(get_uniform(), get_uniform(), n);
+        // new_ray.dir = uniform_hemisphere(get_uniform(), get_uniform());
+
+        new_ray.dir = basis(new_ray.dir, normal);
         return new_ray;
     }
 };
