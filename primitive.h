@@ -11,6 +11,98 @@
 #include "ray.h"
 #include "bxdf.h"
 
+typedef std::vector<double> dvec;
+
+
+class MatBase{
+
+public:
+    explicit MatBase(Vec3 color, Vec3 emission, BxDF_TYPE type): color(color), emission(emission), bxdf_type(type) {}
+
+    virtual Ray sample(Ray normal_ray, Vec3 p, Vec3 normal, Vec3 flipped_normal) = 0;
+
+    BxDF_TYPE bxdf_type;
+    Vec3 emission;
+    Vec3 color;
+};
+
+class MatDiffuse: public MatBase{
+public:
+    explicit MatDiffuse(Vec3 color, Vec3 emission): MatBase(color, emission, BxDF_TYPE ::DIFFUSE) {}
+
+    Ray sample(Ray normal_ray, Vec3 p, Vec3 normal, Vec3 flipped_normal) override {
+        // HINT: BRDF * cosine_term and PDF cancel each other
+        Ray new_ray = Ray();
+        new_ray.org = p;
+        new_ray.dir = cosine_weighted_hemisphere(get_uniform(), get_uniform());
+        // new_ray.dir = uniform_hemisphere(get_uniform(), get_uniform());
+
+        new_ray.dir = basis(new_ray.dir, normal);
+        return new_ray;
+    }
+};
+
+class MatRefractive: public MatBase{
+public:
+    explicit MatRefractive(Vec3 color, Vec3 emission): MatBase(color, emission, BxDF_TYPE ::REFRACTIVE) {}
+
+    Ray sample(Ray normal_ray, Vec3 p, Vec3 normal, Vec3 flipped_normal) override {
+        Ray new_ray = Ray();
+        bool outside = dot(normal_ray.dir, normal) < 0;
+        if (outside){
+            p -= normal * D_OFFSET_CONSTANT;
+        } else {
+            p += normal * D_OFFSET_CONSTANT;
+        }
+        new_ray.org = p;
+        new_ray.dir = refract(normal_ray.dir, normal, 1.555);
+        return new_ray;
+    }
+};
+
+class MatFresnel: public MatBase{
+public:
+    explicit MatFresnel(Vec3 color, Vec3 emission): MatBase(color, emission, BxDF_TYPE ::FRESNEL) {}
+
+    Ray sample(Ray normal_ray, Vec3 p, Vec3 normal, Vec3 flipped_normal) override {
+        Ray new_ray = Ray();
+
+        Vec3 refractionColor = Vec3(0,1,0), reflectionColor = Vec3(1,0,0);
+        // compute fresnel
+        double kr;
+        fresnel(normal_ray.dir, normal, 1.555, kr);
+        bool outside = dot(normal_ray.dir, normal) < 0;
+        Vec3 bias = D_OFFSET_CONSTANT * normal;
+        // compute refraction if it is not a case of total internal reflection
+        if (get_uniform() < (1-kr)) {
+            Vec3 refractionDirection = normalize(refract(normal_ray.dir, normal, 1.555));
+            Vec3 refractionRayOrig = outside ? p - bias : p + bias;
+            new_ray.org = refractionRayOrig;
+            new_ray.dir = refractionDirection;
+        } else {
+            p += flipped_normal * D_OFFSET_CONSTANT;
+            new_ray.org = p;
+            new_ray.dir = specular_reflection(-normal_ray.dir, normal);
+        }
+        return new_ray;
+    }
+};
+
+class MatSpecular: public MatBase{
+public:
+    explicit MatSpecular(Vec3 color, Vec3 emission): MatBase(color, emission, BxDF_TYPE ::SPECULAR) {}
+
+    Ray sample(Ray normal_ray, Vec3 p, Vec3 normal, Vec3 flipped_normal) override {
+        Ray new_ray = Ray();
+        p += flipped_normal * D_OFFSET_CONSTANT;
+        new_ray.org = p;
+        new_ray.dir = specular_reflection(-normal_ray.dir, normal);
+        return new_ray;
+    }
+};
+
+typedef std::vector<MatBase*> MatVec;
+
 /*************************************************    Declaration    **************************************************/
 
 // TODO(?): Make a proper Transform class with matrices.
@@ -28,7 +120,7 @@ public:
 class GeometricPrimitive{
 
 public:
-    GeometricPrimitive(Vec3 pos, Vec3 e, Vec3 c, BxDF_TYPE bxdf_type, Transform trans, bool if_inter = false, int prim_id = 0);
+    GeometricPrimitive(Vec3 pos, MatVec mats, Transform trans, bool if_inter = false, int prim_id = 0);
 
     virtual ~GeometricPrimitive() { };
 
@@ -37,12 +129,8 @@ public:
 
     // Position before any transformation
     Vec3 position;
-    Vec3 emission;
-    Vec3 color;
 
-    // TODO(?): Get rid of switch-case material system and replace it with proper OOP materials
-    // BxDF type
-    BxDF_TYPE bxdf;
+    MatVec mats;
     Transform transform;
 
     bool if_interpolated;
@@ -53,7 +141,7 @@ public:
 class TriangleMesh final : public GeometricPrimitive{
 
 public:
-    explicit TriangleMesh(std::string file, Transform trans, Vec3 pos, Vec3 e, Vec3 c, BxDF_TYPE bxdf_type);
+    explicit TriangleMesh(std::string file, Transform trans, Vec3 pos, MatVec mats);
 
     ~TriangleMesh();
 
@@ -75,7 +163,7 @@ public:
 class Sphere final : public GeometricPrimitive{
 
 public:
-    explicit Sphere(Vec3::value_type rad, Transform trans, Vec3 pos, Vec3 e, Vec3 c, BxDF_TYPE bxdf_type);
+    explicit Sphere(Vec3::value_type rad, Transform trans, Vec3 pos, MatVec mats);
 
     ~Sphere() = default;
 
@@ -92,13 +180,13 @@ public:
 
 /**************************************    Implementation: GeometricPrimitive    **************************************/
 
-inline GeometricPrimitive::GeometricPrimitive(Vec3 pos, Vec3 e, Vec3 c, BxDF_TYPE bxdf_type, Transform trans, bool if_inter, int prim_id) :
-    position(pos), emission(e), color(c), bxdf(bxdf_type), transform(trans), if_interpolated(if_inter), primitive_id(prim_id) { }
+inline GeometricPrimitive::GeometricPrimitive(Vec3 pos, MatVec mats, Transform trans, bool if_inter, int prim_id) :
+    position(pos), mats(mats), transform(trans), if_interpolated(if_inter), primitive_id(prim_id) { }
 
 /****************************************    Implementation: TriangleMesh    ******************************************/
 
-inline TriangleMesh::TriangleMesh(std::string file, Transform trans, Vec3 pos, Vec3 e, Vec3 c, BxDF_TYPE bxdf_type) :
-    GeometricPrimitive(pos, e, c, bxdf_type, trans, true), filename(file) { }
+inline TriangleMesh::TriangleMesh(std::string file, Transform trans, Vec3 pos, MatVec mats) :
+    GeometricPrimitive(pos, mats, trans, true), filename(file) { }
 
 inline TriangleMesh::~TriangleMesh(){
     delete [] aligned_normals;
@@ -225,8 +313,8 @@ inline int TriangleMesh::construct_embree_object(RTCDevice& rtc_device, RTCScene
 
 /*******************************************    Implementation: Sphere    *********************************************/
 
-inline Sphere::Sphere(Vec3::value_type rad, Transform trans, Vec3 pos, Vec3 e, Vec3 c, BxDF_TYPE bxdf_type) :
-    GeometricPrimitive(pos, e, c, bxdf_type, trans, false), radius(rad) { }
+inline Sphere::Sphere(Vec3::value_type rad, Transform trans, Vec3 pos, MatVec mats) :
+    GeometricPrimitive(pos, mats, trans, false), radius(rad) { }
 
 // Bounding box construction routine
 inline void Sphere::sphereBoundsFunc(const struct RTCBoundsFunctionArguments* args) {

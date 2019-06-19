@@ -7,6 +7,7 @@
 
 
 enum BxDF_TYPE {
+    NULL_MAT,
     DIFFUSE,
     SPECULAR,
     REFRACTIVE,
